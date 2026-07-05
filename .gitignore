@@ -1,0 +1,32 @@
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+.venv/
+venv/
+ENV/
+
+# PyInstaller / Builds
+build/
+dist/
+*.spec
+build.ps1
+
+# Caches locais
+core/.geo_cache.json
+
+# Logs e arquivos de debug gerados nos testes
+*.log
+*.html
+*.txt
+debug_*.py
+parse_erro.py
+resposta_*.html
+resp500.html
+perfil_fotos.html
+resposta_erro.txt
+upload.log
+
+# IDEs
+.idea/
+.vscode/

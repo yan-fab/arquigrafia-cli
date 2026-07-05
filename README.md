@@ -1,62 +1,67 @@
 # Arquigrafia Uploader CLI 🚀
 
-Uma interface de terminal (TUI/CLI) moderna, rápida e inteligente para automatizar o envio de fotografias arquitetônicas para a plataforma [Arquigrafia](https://www.arquigrafia.org.br).
+A modern, fast, and intelligent terminal user interface (TUI/CLI) to automate the upload of architectural photographs to the [Arquigrafia](https://www.arquigrafia.org.br) platform.
 
-O projeto conta com identidade visual em tom **Marsala**, barra de progresso customizada inspirada no estilo **Flow TUI** e integração com **Inteligência Artificial (BLIP)** local para descrição de fotos e geração automática de tags.
-
----
-
-## ✨ Recursos
-
-- **IA Visual Local (BLIP-base):** Analisa a estrutura física da foto e gera uma descrição textual complementar em português automaticamente.
-- **Geolocalização Inteligente (GPS + Nominatim):** Extrai latitude/longitude dos dados EXIF e obtém o nome exato da rua, bairro, cidade e pontos de interesse (POI).
-- **Nomeação por Local:** Renomeia o título da imagem no upload de forma inteligente a partir do local (ex: *Sesc 24 de Maio*, *Fórum João Mendes*).
-- **Compressão Inteligente:** Reduz o tamanho de arquivos pesados para menos de 10 MB para garantir o envio no limite do servidor, preservando os metadados EXIF.
-- **TUI Marsala & Flow Columns:** Interface elegante com questionários e barra de progresso contendo estimativa em tempo real da velocidade de upload (`KB/s`).
-- **Seleção Flexível:** Permite selecionar uma pasta inteira ou apenas um arquivo de imagem único (`.jpg`, `.jpeg`, `.png`, `.webp`).
-- **Persistência de Sessão Segura:** Armazena o login e senha cifrados usando o chaveiro seguro do sistema (Windows Keyring).
+This project features a custom visual identity in **Marsala** theme, a custom progress bar inspired by the **Flow TUI** style, and local **Artificial Intelligence (BLIP)** integration for automatic image description and tag generation.
 
 ---
 
-## 🛠️ Instalação e Execução
+## ✨ Features
 
-### Opção 1: Executável (Pronto para Uso)
-Você pode rodar diretamente o executável independente pré-compilado:
-1. Vá até a pasta `dist/` do projeto.
-2. Execute o arquivo `arquigrafia.exe`.
+- **Local Visual AI (BLIP-base):** Automatically analyzes the physical structure of the photograph and generates a complementary text description in Portuguese.
+- **Smart Geocoding (GPS + Nominatim):** Extracts latitude/longitude from EXIF metadata and retrieves the exact street name, neighborhood, city, and points of interest (POI).
+- **Location-Based Naming:** Intelligently names the upload title based on the retrieved location/POI (e.g., *Sesc 24 de Maio*, *Fórum João Mendes*).
+- **Smart Compression:** Automatically compresses large files to under 10 MB to ensure compliance with server limitations while preserving EXIF metadata.
+- **Marsala TUI & Flow Columns:** Sleek interface featuring prompt guides and real-time upload speed (`KB/s`) estimation.
+- **Flexible Source Selection:** Allows uploading an entire folder or a single image file (`.jpg`, `.jpeg`, `.png`, `.webp`).
+- **Secure Session Persistence:** Stores credentials safely encrypted using the operating system's keyring (Windows Keyring).
 
-### Opção 2: A partir do Código-Fonte
-Se preferir rodar no seu ambiente Python (requer Python 3.10+):
+---
 
-1. Instale as dependências:
+## 🛠️ Installation and Usage
+
+### Option 1: Standalone Executable (Ready to Use)
+You can run the pre-compiled, independent executable directly:
+1. Navigate to the `dist/` directory of the project.
+2. Run the `arquigrafia.exe` file.
+
+### Option 2: Running from Source
+To run the application within your own Python environment (requires Python 3.10+):
+
+1. Install dependencies:
    ```bash
    pip install -r requirements.txt
    ```
-2. Inicie a aplicação:
+2. Start the application:
    ```bash
    python main.py
    ```
 
 ---
 
-## 📝 Estrutura do Projeto
+## 📝 Project Structure
 
 ```
 arquigrafia-cli/
 ├── cli/
-│   ├── screens/         # Telas da TUI (Login, Pasta, Config)
-│   └── utils.py         # Configurações de tema, fontes e console
+│   ├── screens/         # TUI Screens (Login, Folder, Config)
+│   └── utils.py         # Theme setup, fonts, and console styles
 ├── core/
-│   ├── auth.py          # Autenticação e persistência de sessão
-│   ├── exif.py          # Extração de metadados das imagens
-│   ├── geo.py           # Geolocalização com cache local (.geo_cache.json)
-│   ├── ia.py            # Integração com IA BLIP
-│   └── uploader.py      # Lógica e motor do upload HTTP
-├── main.py              # Ponto de entrada e orquestrador do loop
-└── requirements.txt     # Dependências do Python
+│   ├── auth.py          # Session authentication and keyring integration
+│   ├── exif.py          # Image metadata extraction
+│   ├── geo.py           # Geocoding with local cache (.geo_cache.json)
+│   ├── ia.py            # Local BLIP AI integration
+│   └── uploader.py      # Upload logic and HTTP POST handler
+├── main.py              # Main entry point and flow orchestrator
+└── requirements.txt     # Python dependencies
 ```
 
 ---
 
-## 🔒 Segurança de Credenciais
-A aplicação utiliza a biblioteca `keyring` para interagir com o gerenciador de credenciais do Windows (Credential Manager), salvando sua senha de forma criptografada pelo sistema operacional. Nenhum dado de acesso é enviado a servidores de terceiros além do próprio Arquigrafia.
+## 🔒 Credentials Security
+The application uses the `keyring` library to securely interface with the Windows Credential Manager, ensuring your password is encrypted by your OS. Your credentials are only sent to the official Arquigrafia platform during authentication.
+
+---
+
+## 📄 License
+This project is open-source and licensed under the [MIT License](LICENSE).

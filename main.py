@@ -37,8 +37,11 @@ from cli.utils import console, banner, section, ok, erro, aviso, info, THEME
 from cli.screens.login_screen  import tela_login
 from cli.screens.folder_screen import tela_pasta
 from cli.screens.config_screen import tela_config
+from cli.screens.menu_screen   import tela_menu
+from cli.screens.organizer_screen import tela_organizacao
 from core.uploader             import enviar_foto
 from core.ia                   import carregar_ia
+from core.scanner              import extrair_id_usuario
 
 
 # ──────────────────────────────────────────────────────────────────
@@ -157,68 +160,84 @@ def main():
         _ia_thread.start()
         logging.info("Thread de pré-carregamento da IA iniciada.")
 
-        # 2. Pasta
-        console.print()
-        pasta, imagens = tela_pasta()
+        # Obtém o ID do usuário conectado para varredura futura
+        user_id = extrair_id_usuario(session)
+        logging.info(f"User ID logado: {user_id}")
 
-        # 3. Configurações
-        console.print()
-        config = tela_config(session, len(imagens))
-        config["autor"] = nome  # garante que o nome do autor logado é usado
+        while True:
+            # 2. Menu Principal
+            opcao = tela_menu(nome)
 
-        # 4. Upload com barra Flow
-        section("UPLOAD EM ANDAMENTO")
-        console.print()
+            if opcao == "upload":
+                # 3. Fluxo de Upload
+                console.print()
+                pasta, imagens = tela_pasta()
 
-        resultados  = []
-        t_inicio    = time.perf_counter()
-        status_atual = ["Preparando…"]
+                console.print()
+                config = tela_config(session, len(imagens))
+                config["autor"] = nome
 
-        progresso = _montar_progresso()
+                section("UPLOAD EM ANDAMENTO")
+                console.print()
 
-        with progresso:
-            task_id = progresso.add_task(
-                "Enviando…",
-                total=len(imagens),
-                velocidade=0.0,
-            )
+                resultados = []
+                t_inicio = time.perf_counter()
+                progresso = _montar_progresso()
 
-            for caminho in imagens:
-                nome_arq = os.path.basename(caminho)
-                progresso.update(task_id, description=f"[marsala]{nome_arq[:35]}[/]")
-                logging.info(f"Iniciando upload: {caminho}")
+                with progresso:
+                    task_id = progresso.add_task(
+                        "Enviando…",
+                        total=len(imagens),
+                        velocidade=0.0,
+                    )
 
-                def make_cb(tid):
-                    def cb(msg):
-                        progresso.update(tid, description=f"[cinza]{msg[:35]}[/]")
-                        logging.debug(f"  status: {msg}")
-                    return cb
+                    for caminho in imagens:
+                        nome_arq = os.path.basename(caminho)
+                        progresso.update(task_id, description=f"[marsala]{nome_arq[:35]}[/]")
+                        logging.info(f"Iniciando upload: {caminho}")
 
-                resultado = enviar_foto(
-                    session, caminho, config,
-                    album_id=config["album_id"],
-                    novo_album=config["novo_album"],
-                    callback_status=make_cb(task_id),
-                )
-                logging.info(f"Resultado: sucesso={resultado.sucesso} http_status={getattr(resultado,'http_status','-')} vel={resultado.velocidade_kbs} erro={resultado.erro}")
-                resultados.append(resultado)
-                progresso.update(
-                    task_id,
-                    advance=1,
-                    velocidade=resultado.velocidade_kbs,
-                    description=f"[marsala]{nome_arq[:30]}[/]",
-                )
+                        def make_cb(tid):
+                            def cb(msg):
+                                progresso.update(tid, description=f"[cinza]{msg[:35]}[/]")
+                                logging.debug(f"  status: {msg}")
+                            return cb
 
-                if resultado.sucesso:
-                    ok(f"{nome_arq}  →  {resultado.local}  [cinza]↑ {resultado.velocidade_kbs:.1f} KB/s[/]")
-                else:
-                    erro(f"{nome_arq}  →  {resultado.erro}")
+                        resultado = enviar_foto(
+                            session, caminho, config,
+                            album_id=config["album_id"],
+                            novo_album=config["novo_album"],
+                            callback_status=make_cb(task_id),
+                        )
+                        logging.info(f"Resultado: sucesso={resultado.sucesso} http_status={getattr(resultado,'http_status','-')} vel={resultado.velocidade_kbs} erro={resultado.erro}")
+                        resultados.append(resultado)
+                        progresso.update(
+                            task_id,
+                            advance=1,
+                            velocidade=resultado.velocidade_kbs,
+                            description=f"[marsala]{nome_arq[:30]}[/]",
+                        )
 
-        tempo_total = time.perf_counter() - t_inicio
+                        if resultado.sucesso:
+                            ok(f"{nome_arq}  →  {resultado.local}  [cinza]↑ {resultado.velocidade_kbs:.1f} KB/s[/]")
+                        else:
+                            erro(f"{nome_arq}  →  {resultado.erro}")
 
-        # 5. Relatório final
-        console.print()
-        _exibir_relatorio(resultados, tempo_total, pasta)
+                tempo_total = time.perf_counter() - t_inicio
+                console.print()
+                _exibir_relatorio(resultados, tempo_total, pasta)
+
+            elif opcao == "organizar":
+                if not user_id:
+                    erro("Não foi possível identificar seu ID de usuário. O recurso de organização requer verificação de ID.")
+                    time.sleep(3)
+                    continue
+                
+                # 4. Fluxo de Organização
+                tela_organizacao(session, user_id)
+
+            elif opcao == "sair":
+                console.print("\n  [marsala]Desconectando… Obrigado por usar o Arquigrafia Uploader![/]\n")
+                sys.exit(0)
 
     except KeyboardInterrupt:
         console.print("\n\n  [aviso]Cancelado pelo usuario.[/]")

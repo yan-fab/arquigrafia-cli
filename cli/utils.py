@@ -50,7 +50,6 @@ def banner():
     console.print(Panel(
         styled,
         title="[marsala.dim][ ARQUIGRAFIA v2.0 ][/]",
-        subtitle="[cinza]Uploader automatico com IA[/]",
         border_style="marsala.dim",
         box=box.DOUBLE,
         padding=(0, 2),

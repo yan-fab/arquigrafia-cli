@@ -73,5 +73,8 @@ def aviso(msg: str):
     console.print(f"  [aviso]⚠[/]  [creme]{msg}[/]")
 
 
-def info(label: str, valor: str):
-    console.print(f"  [label]{label:<14}[/] [valor]{valor}[/]")
+def info(label: str, valor: str = ""):
+    if valor:
+        console.print(f"  [label]{label:<14}[/] [valor]{valor}[/]")
+    else:
+        console.print(f"  [cinza]ℹ[/]  [creme]{label}[/]")

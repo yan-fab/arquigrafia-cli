@@ -6,8 +6,16 @@ import re
 import logging
 import warnings
 
-warnings.filterwarnings("ignore", category=UserWarning)
-warnings.filterwarnings("ignore", category=FutureWarning)
+# Silencia tqdm, downloads brutos e avisos verbosos do HuggingFace/Transformers no terminal
+os.environ["HF_HUB_DISABLE_PROGRESS_BARS"] = "1"
+os.environ["TRANSFORMERS_VERBOSITY"] = "error"
+os.environ["TOKENIZERS_PARALLELISM"] = "false"
+os.environ["HF_HUB_ENABLE_HF_TRANSFER"] = "0"
+os.environ["TQDM_DISABLE"] = "1"
+
+warnings.filterwarnings("ignore")
+logging.getLogger("transformers").setLevel(logging.ERROR)
+logging.getLogger("huggingface_hub").setLevel(logging.ERROR)
 
 # ─── Cache global para reutilizar o modelo entre fotos ───────────────────────
 _processor  = None
@@ -15,6 +23,11 @@ _captioner  = None
 _translator = None
 _ia_pronta  = False
 _ia_tentou  = False          # evita tentar carregar de novo se já falhou
+
+
+def is_ia_pronta() -> bool:
+    """Retorna True se o modelo BLIP já estiver carregado na memória."""
+    return _ia_pronta
 
 STOP_WORDS = {
     "uma", "um", "com", "ao", "na", "no", "em", "para", "por",
@@ -46,6 +59,12 @@ def carregar_ia(callback=None) -> bool:
             callback("Carregando IA visual…")
         logging.info("Iniciando carregamento do modelo BLIP...")
 
+        try:
+            from huggingface_hub.utils import disable_progress_bars
+            disable_progress_bars()
+        except Exception:
+            pass
+
         from transformers import BlipProcessor, BlipForConditionalGeneration
         from deep_translator import GoogleTranslator
 
@@ -66,10 +85,10 @@ def carregar_ia(callback=None) -> bool:
         return False
 
 
-def analisar_imagem(caminho: str, geo: dict, callback=None) -> tuple[str, list[str]]:
+def analisar_imagem(caminho: str, geo: dict, callback=None, usar_ia: bool = True) -> tuple[str, list[str]]:
     """
     Analisa a imagem com BLIP e gera descrição + tags visuais.
-    Sempre retorna (descricao_str, lista_tags) mesmo se a IA falhar.
+    Sempre retorna (descricao_str, lista_tags) mesmo se a IA falhar ou estiver desativada.
     """
     cidade  = geo.get("cidade", "")
     estado  = geo.get("estado", "")
@@ -85,6 +104,10 @@ def analisar_imagem(caminho: str, geo: dict, callback=None) -> tuple[str, list[s
         desc_base = "Fotografia arquitetônica."
 
     tags_base = _gerar_tags_geo(geo)
+
+    # Se a IA estiver desativada, retorna direto os metadados de geolocalização
+    if not usar_ia:
+        return desc_base, tags_base
 
     # Tenta enriquecer com IA
     if not _ia_pronta:

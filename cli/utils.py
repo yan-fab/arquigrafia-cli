@@ -20,6 +20,8 @@ AMARELO = "color(178)"
 THEME = Theme({
     "marsala":       MARSALA_BRIGHT,
     "marsala.dim":   MARSALA,
+    "marsala.bold":  f"bold {MARSALA_BRIGHT}",
+    "bold.marsala":  f"bold {MARSALA_BRIGHT}",
     "creme":         CREME,
     "cinza":         CINZA,
     "ok":            VERDE,

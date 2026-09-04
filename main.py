@@ -19,6 +19,13 @@ logging.basicConfig(
     force=True,
 )
 
+# Silencia tqdm, downloads brutos e avisos verbosos do HuggingFace/Transformers no terminal
+os.environ["HF_HUB_DISABLE_PROGRESS_BARS"] = "1"
+os.environ["TRANSFORMERS_VERBOSITY"] = "error"
+os.environ["TOKENIZERS_PARALLELISM"] = "false"
+os.environ["HF_HUB_ENABLE_HF_TRANSFER"] = "0"
+os.environ["TQDM_DISABLE"] = "1"
+
 # Garante compatibilidade do prompt_toolkit com qualquer terminal Windows (conhost, Windows Terminal, VS Code, Git Bash)
 try:
     import prompt_toolkit.output.defaults
@@ -56,7 +63,7 @@ from cli.screens.config_screen import tela_config
 from cli.screens.menu_screen   import tela_menu
 from cli.screens.organizer_screen import tela_organizacao
 from core.uploader             import enviar_foto
-from core.ia                   import carregar_ia
+from core.ia                   import carregar_ia, is_ia_pronta
 from core.scanner              import extrair_id_usuario
 
 
@@ -166,16 +173,6 @@ def main():
         # 1. Login via REST API OAuth 2.0
         session, nome, email, user_id = tela_login()
 
-        # 1.5 Pré-carrega IA em background enquanto usuário configura
-        import threading
-        _ia_thread = threading.Thread(
-            target=carregar_ia,
-            kwargs={"callback": lambda m: logging.info(f"[IA] {m}")},
-            daemon=True,
-        )
-        _ia_thread.start()
-        logging.info("Thread de pré-carregamento da IA iniciada.")
-
         # Garante o ID do usuário conectado para varredura e upload
         if not user_id:
             user_id = extrair_id_usuario(session)
@@ -194,6 +191,25 @@ def main():
                 config = tela_config(session, len(imagens))
                 config["autor"] = nome
                 config["user_id"] = user_id
+
+                # 3.5 Tela dedicada para carregamento da IA (apenas se ativada pelo usuário)
+                if config.get("usar_ia", True) and not is_ia_pronta():
+                    console.print()
+                    section("MOTOR DE IA VISUAL (BLIP)")
+                    console.print()
+                    with Progress(
+                        SpinnerColumn(),
+                        TextColumn("[marsala]{task.description}[/]"),
+                        console=console,
+                        transient=True,
+                    ) as prog_ia:
+                        task_ia = prog_ia.add_task("Carregando modelo BLIP para análise arquitetônica…", total=None)
+                        sucesso_ia = carregar_ia(callback=lambda m: prog_ia.update(task_ia, description=f"[marsala]{m}[/]"))
+                        if sucesso_ia:
+                            ok("Modelo BLIP pronto para identificação visual e tags!")
+                        else:
+                            aviso("IA indisponível. O envio continuará usando metadados EXIF e GPS.")
+                        time.sleep(1)
 
                 section("UPLOAD EM ANDAMENTO")
                 console.print()

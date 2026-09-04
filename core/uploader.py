@@ -122,7 +122,8 @@ def enviar_foto(
         tamanho_kb = len(img_bytes) / 1024
 
         # ── Análise de IA Visual ──────────────────────────────────────────────
-        descricao_ia, tags_ia = analisar_imagem(caminho, geo, callback_status)
+        usar_ia = config.get("usar_ia", True)
+        descricao_ia, tags_ia = analisar_imagem(caminho, geo, callback_status, usar_ia=usar_ia)
         geo["descricao"] = descricao_ia
         geo["tags"]      = ", ".join(tags_ia)
         # ─────────────────────────────────────────────────────────────────────

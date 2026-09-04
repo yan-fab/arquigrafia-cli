@@ -81,6 +81,14 @@ def tela_config(session, total_fotos: int) -> dict:
     }
     licenca = licenca_map.get(licenca_str, "visualizacao")
 
+    # ── Inteligência Artificial ────────────────────────────
+    console.print("\n  [label]── INTELIGÊNCIA ARTIFICIAL ──[/]")
+    usar_ia = questionary.confirm(
+        "Identificar arquitetura e gerar tags com IA (BLIP)?",
+        default=True,
+        style=QSTYLE,
+    ).ask()
+
     # ── Resumo ─────────────────────────────────────────────
     console.print()
     table = Table(box=box.SIMPLE_HEAVY, show_header=False,
@@ -92,9 +100,10 @@ def tela_config(session, total_fotos: int) -> dict:
         f"ID {album_id}" if album_id
         else (novo_album or "Sem álbum")
     )
-    table.add_row("Álbum",    album_label)
-    table.add_row("Licença",  licenca_str)
-    table.add_row("Total",    f"{total_fotos} fotos")
+    table.add_row("Álbum",     album_label)
+    table.add_row("Licença",   licenca_str)
+    table.add_row("IA Visual", "Ativada (BLIP)" if usar_ia else "Desativada (Apenas GPS)")
+    table.add_row("Total",     f"{total_fotos} fotos")
 
     console.print(Panel(table, title="[marsala]RESUMO[/]",
                         border_style="marsala.dim", box=box.DOUBLE))
@@ -112,6 +121,7 @@ def tela_config(session, total_fotos: int) -> dict:
         "album_id":   album_id,
         "novo_album": novo_album,
         "licenca":    licenca,
+        "usar_ia":    usar_ia,
         "autor":      getattr(session, "user_name", ""),
         "user_id":    getattr(session, "user_id", None),
     }

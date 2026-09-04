@@ -89,7 +89,7 @@ def tela_organizacao(session: requests.Session, user_id: str):
 
     tabela = Table(border_style="marsala.dim", box=None, padding=(0, 2))
     tabela.add_column("Localização", style="label")
-    tabela.add_column("Fotos Sem Álbum", style="marsala bold", justify="right")
+    tabela.add_column("Fotos Sem Álbum", style="marsala", justify="right")
 
     for local, ids in agrupamento.items():
         tabela.add_row(local, str(len(ids)))

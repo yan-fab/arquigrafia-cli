@@ -170,9 +170,17 @@ def _gerar_tags_geo(geo: dict) -> list[str]:
     return sorted(set(tags))
 
 
+from core.tags import casar_tags_vcaa
+
+
 def _extrair_tags(texto: str) -> list[str]:
+    """Extrai tags priorizando termos do Vocabulário Controlado VCAA (USP)."""
+    tags_vcaa = casar_tags_vcaa(texto)
+
     palavras = re.findall(
-        r"\b[a-zA-ZáàãâéèêíïóôõöúçÁÀÃÂÉÈÊÍÏÓÔÕÖÚÇ]+\b",
+        r"\b[a-zA-ZáàãâéèêíïóôõöúçÁÀÃÂÉÈÊÍÏÓÔÕÖÚÇ\-]+\b",
         texto.lower()
     )
-    return [p for p in palavras if len(p) >= 4 and p not in STOP_WORDS]
+    palavras_livres = [p for p in palavras if len(p) >= 4 and p not in STOP_WORDS]
+
+    return sorted(set(tags_vcaa + palavras_livres))

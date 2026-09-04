@@ -5,6 +5,7 @@ datas = []
 datas += collect_data_files('pyfiglet')
 datas += collect_data_files('transformers')
 datas += collect_data_files('tokenizers')
+datas += [('core/vcaa_tags.json', 'core')]
 
 
 a = Analysis(

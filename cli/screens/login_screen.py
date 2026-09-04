@@ -40,13 +40,13 @@ def tela_login() -> tuple:
             "Usar conta salva?", default=True, style=QSTYLE
         ).ask()
         if usar:
-            console.print("\n  [cinza]Conectando…[/]")
-            session, nome = fazer_login(email_salvo, senha_salva)
+            session, nome, user_id = fazer_login(email_salvo, senha_salva)
             if session:
                 ok(f"Conectado como: [marsala]{nome}[/]")
-                return session, nome, email_salvo
+                return session, nome, email_salvo, user_id
             else:
-                erro("Falha com credenciais salvas. Faça login novamente.")
+                erro(f"Falha ao conectar: {nome or 'Credenciais inválidas'}")
+                console.print("  [cinza]Faça login novamente com sua senha atualizada.[/]")
 
     # Login manual
     while True:
@@ -66,8 +66,8 @@ def tela_login() -> tuple:
             erro("E-mail e senha são obrigatórios.")
             continue
 
-        console.print("\n  [cinza]Conectando ao Arquigrafia…[/]")
-        session, nome = fazer_login(email, senha)
+        console.print("\n  [cinza]Conectando à API REST do Arquigrafia…[/]")
+        session, nome, user_id = fazer_login(email, senha)
 
         if session:
             ok(f"Conectado como: [marsala]{nome}[/]")
@@ -81,9 +81,9 @@ def tela_login() -> tuple:
                 save_credentials(email, senha)
                 ok("Credenciais salvas com segurança.")
 
-            return session, nome, email
+            return session, nome, email, user_id
         else:
-            erro("Login falhou. Verifique e-mail e senha.")
+            erro(f"Login falhou: {nome or 'Verifique e-mail e senha'}")
             tentar = questionary.confirm("Tentar novamente?", default=True, style=QSTYLE).ask()
             if not tentar:
                 raise SystemExit(0)

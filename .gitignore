@@ -30,3 +30,6 @@ upload.log
 # IDEs
 .idea/
 .vscode/
+
+# Scratch & temporary scripts
+scratch/

@@ -1,35 +1,18 @@
-# core/uploader.py — Motor de upload com cálculo de velocidade em KB/s
+# core/uploader.py — Motor de upload REST API com cálculo de velocidade em KB/s
 
 import os, io, time, re, logging
 import requests
-from bs4 import BeautifulSoup
 from PIL import Image
 
 from core.exif import extrair_exif
 from core.geo  import geocodificar
-from core.ia   import analisar_imagem, carregar_ia
+from core.ia   import analisar_imagem
+from core.auth import criar_album
 
-URL_BASE        = "https://www.arquigrafia.org.br"
-URL_UPLOAD_PAGE = f"{URL_BASE}/photos/upload"
-URL_UPLOAD_POST = f"{URL_BASE}/photos"
+URL_API         = "https://api.arquigrafia.org.br"
+URL_UPLOAD_POST = f"{URL_API}/api/images"
 IMAGENS_EXT     = {".jpg", ".jpeg", ".png", ".heic", ".webp"}
 MAX_MB          = 10
-
-# Mapa nome completo -> sigla para o campo photo_state
-ESTADO_SIGLA = {
-    "Acre": "AC", "Alagoas": "AL", "Amapa": "AP", "Amapá": "AP",
-    "Amazonas": "AM", "Bahia": "BA", "Ceara": "CE", "Ceará": "CE",
-    "Distrito Federal": "DF", "Espirito Santo": "ES", "Espírito Santo": "ES",
-    "Goias": "GO", "Goiás": "GO", "Maranhao": "MA", "Maranhão": "MA",
-    "Mato Grosso": "MT", "Mato Grosso do Sul": "MS",
-    "Minas Gerais": "MG", "Para": "PA", "Pará": "PA",
-    "Paraiba": "PB", "Paraíba": "PB", "Parana": "PR", "Paraná": "PR",
-    "Pernambuco": "PE", "Piaui": "PI", "Piauí": "PI",
-    "Rio de Janeiro": "RJ", "Rio Grande do Norte": "RN",
-    "Rio Grande do Sul": "RS", "Rondonia": "RO", "Rondônia": "RO",
-    "Roraima": "RR", "Santa Catarina": "SC", "Sao Paulo": "SP",
-    "São Paulo": "SP", "Sergipe": "SE", "Tocantins": "TO",
-}
 
 
 def listar_imagens(pasta: str) -> tuple[list[str], list[str]]:
@@ -75,75 +58,28 @@ def _nome_foto(caminho: str, geo: dict) -> str:
     return base.title()
 
 
-def _get_upload_token(session: requests.Session) -> tuple[str | None, object | None]:
-    res = session.get(URL_UPLOAD_PAGE, timeout=20)
-    soup = BeautifulSoup(res.text, "html.parser")
-    token_el = soup.find("input", {"name": "_token"})
-    if not token_el:
-        return None, None
-    return token_el["value"], soup
+def _formatar_data_iso(data_str: str) -> str:
+    """Converte data DD/MM/AAAA para AAAA-MM-DD."""
+    if not data_str:
+        return ""
+    if "/" in data_str:
+        partes = data_str.split("/")
+        if len(partes) == 3:
+            return f"{partes[2]}-{partes[1]}-{partes[0]}"
+    return data_str
 
 
-def _montar_payload(token: str, soup, nome_foto: str, geo: dict,
-                    exif: dict, album_id: str, novo_album: str,
-                    config: dict) -> dict:
-    estado_nome = geo.get("estado", "")
-    estado_sigla = ESTADO_SIGLA.get(estado_nome, estado_nome[:2].upper() if estado_nome else "")
-
-    tags = geo.get("tags", "arquitetura, fotografia")
-
-    payload = {
-        "_token":                      token,
-        "type":                        "photo",
-        "video":                       "",
-        "pageSource":                  "",
-
-        "photo_name":                  nome_foto,
-        "photo_imageAuthor":           config.get("autor", ""),
-
-        # Localização
-        "photo_country":               geo.get("pais", "Brasil"),
-        "photo_state":                 estado_sigla,
-        "photo_city":                  geo.get("cidade", ""),
-        "photo_district":              geo.get("regiao", ""),
-        "photo_street":                geo.get("rua", ""),
-
-        # Data da foto
-        "photo_imageDate":             exif.get("data_foto", ""),
-        "century_image":               "",
-        "decade_select_image":         "",
-
-        # Obra/autor da obra
-        "photo_workAuthor":            "",
-        "work_authors":                "",
-        "workDate":                    "",
-        "century":                     "",
-        "decade_select":               "",
-
-        # Descrição e tags
-        "photo_description":           geo.get("descricao", ""),
-        "tags_input":                  tags,
-        "tags":                        tags,
-
-        # Álbum
-        "photo_album":                 album_id,
-        "new_album-name":              novo_album if not album_id else "",
-
-        # Licença e autorização
-        "photo_authorization_checkbox": "1",
-        "photo_allowCommercialUses":   "NO",
-        "photo_allowModifications":    "NO",
-
-        "photo_tombo":                 "",
+def _mapear_licenca(tipo: str) -> str:
+    """Converte o identificador do CLI para o formato da API."""
+    mapa = {
+        "visualizacao": "CC BY-NC-ND",
+        "cc_by":        "CC BY",
+        "cc_by_nc":     "CC BY-NC",
+        "cc_by_nc_sa":  "CC BY-NC-SA",
+        "cc_by_sa":     "CC BY-SA",
+        "cc0":          "CC0",
     }
-    if config.get("licenca") == "cc_by":
-        payload["photo_allowCommercialUses"] = "YES"
-        payload["photo_allowModifications"]  = "YES"
-    elif config.get("licenca") == "cc_by_nc":
-        payload["photo_allowCommercialUses"] = "NO"
-        payload["photo_allowModifications"]  = "YES"
-    return payload
-
+    return mapa.get(tipo, "CC BY-NC-SA")
 
 
 class ResultadoUpload:
@@ -165,18 +101,19 @@ def enviar_foto(
     callback_status=None,
 ) -> ResultadoUpload:
     """
-    Envia uma foto para o Arquigrafia.
-    callback_status(msg: str) é chamado durante etapas.
-    Retorna ResultadoUpload com velocidade em KB/s.
+    Envia uma foto para a API REST do Arquigrafia (POST /api/images).
+    callback_status(msg: str) é chamado durante as etapas.
+    Retorna ResultadoUpload.
     """
     nome_arq = os.path.basename(caminho)
+    user_id = config.get("user_id") or getattr(session, "user_id", None)
 
     try:
         if callback_status: callback_status("Lendo EXIF…")
         exif = extrair_exif(caminho)
 
         geo = {"pais": "Brasil", "estado": "", "cidade": "", "regiao": "", "descricao": ""}
-        if exif["latitude"] and exif["longitude"]:
+        if exif.get("latitude") and exif.get("longitude"):
             if callback_status: callback_status("Geolocalizando…")
             geo = geocodificar(exif["latitude"], exif["longitude"])
 
@@ -190,43 +127,107 @@ def enviar_foto(
         geo["tags"]      = ", ".join(tags_ia)
         # ─────────────────────────────────────────────────────────────────────
 
-        if callback_status: callback_status("Obtendo token…")
-        token, soup = _get_upload_token(session)
-        if not token:
-            return ResultadoUpload(nome_arq, False, "—", 0.0, "Token não encontrado")
-
         nome_foto = _nome_foto(caminho, geo)
-        payload   = _montar_payload(token, soup, nome_foto, geo, exif,
-                                     album_id, novo_album, config)
+        licenca = _mapear_licenca(config.get("licenca", ""))
+        data_iso = _formatar_data_iso(exif.get("data_foto", ""))
 
+        # ── Montagem do Formulário Multipart para /api/images ─────────────────
+        form_data = {
+            "title": nome_foto,
+            "license": licenca,
+        }
+
+        if user_id:
+            form_data["user_id"] = user_id
+
+        if geo.get("descricao"):
+            form_data["description"] = geo["descricao"]
+
+        local_label = geo.get("local") or geo.get("cidade") or ""
+        if local_label:
+            form_data["location_label"] = local_label
+
+        if exif.get("latitude") and exif.get("longitude"):
+            form_data["latitude"] = f"{float(exif['latitude']):.8f}"
+            form_data["longitude"] = f"{float(exif['longitude']):.8f}"
+
+        if data_iso:
+            form_data["earliest_date"] = data_iso
+            form_data["circa"] = "0"
+
+        # Tags/Assuntos como subjects[]
+        subjects = []
+        if tags_ia:
+            subjects.extend(tags_ia)
+        elif geo.get("tags"):
+            subjects.extend([t.strip() for t in geo["tags"].split(",") if t.strip()])
+
+        # Multipart files
         files = {
-            "photo": (
+            "image": (
                 os.path.splitext(nome_arq)[0] + ".jpg",
                 img_bytes,
                 "image/jpeg",
             )
         }
 
+        # Converte subjects[] para formato multipart
+        multipart_data = []
+        for k, v in form_data.items():
+            multipart_data.append((k, (None, str(v))))
+        for sub in subjects:
+            multipart_data.append(("subjects[]", (None, str(sub))))
+
         if callback_status: callback_status(f"Enviando {tamanho_kb:.0f} KB…")
         t_inicio = time.perf_counter()
 
-        res = session.post(URL_UPLOAD_POST, data=payload, files=files,
-                           timeout=60, allow_redirects=True)
+        # Envia para a API REST oficial
+        res = session.post(
+            URL_UPLOAD_POST,
+            data=multipart_data,
+            files=files,
+            timeout=60,
+        )
 
         t_fim = time.perf_counter()
         duracao = max(t_fim - t_inicio, 0.001)
-        velocidade = tamanho_kb / duracao  # KB/s
+        velocidade = tamanho_kb / duracao
 
-        local_str = geo.get("descricao") or geo.get("cidade") or "Sem GPS"
+        local_str = geo.get("local") or geo.get("cidade") or "Sem GPS"
+        logging.info(f"Resposta do upload ({nome_arq}): status={res.status_code}")
 
-        logging.info(f"HTTP status do upload: {res.status_code} | URL: {res.url}")
+        if res.status_code in (200, 201):
+            res_json = res.json()
+            nova_imagem_id = res_json.get("id") or (res_json.get("data", {}).get("id"))
 
-        # Status 200, 201, 302 = sucesso real. 500 = possivel bug do servidor mas foto salva.
-        sucesso = res.status_code in (200, 201, 302, 500)
+            # ── Associação ao Álbum se solicitado ─────────────────────────────
+            target_album_id = album_id
+            if novo_album and not target_album_id:
+                if callback_status: callback_status(f"Criando álbum '{novo_album}'…")
+                target_album_id = criar_album(session, novo_album)
 
-        return ResultadoUpload(nome_arq, sucesso, local_str, round(velocidade, 1),
-                               http_status=res.status_code)
+            if target_album_id and nova_imagem_id:
+                if callback_status: callback_status("Vinculando ao álbum…")
+                try:
+                    alb_url = f"{URL_API}/api/albums/{target_album_id}/images"
+                    alb_payload = {"images": [{"image_id": nova_imagem_id}]}
+                    res_alb = session.post(alb_url, json=alb_payload, timeout=15)
+                    logging.info(f"Associação de foto {nova_imagem_id} ao álbum {target_album_id}: status={res_alb.status_code}")
+                except Exception as ea:
+                    logging.warning(f"Erro ao associar foto ao álbum: {ea}")
+
+            return ResultadoUpload(nome_arq, True, local_str, round(velocidade, 1),
+                                   http_status=res.status_code)
+        else:
+            try:
+                err_msg = res.json().get("message") or res.text[:80]
+            except Exception:
+                err_msg = res.text[:80]
+            logging.error(f"Erro no upload ({res.status_code}): {err_msg}")
+            return ResultadoUpload(nome_arq, False, "—", 0.0,
+                                   erro=f"HTTP {res.status_code}: {err_msg}",
+                                   http_status=res.status_code)
 
     except Exception as e:
-        logging.error(f"Excecao no upload de {os.path.basename(caminho)}: {e}", exc_info=True)
+        logging.error(f"Exceção no upload de {os.path.basename(caminho)}: {e}", exc_info=True)
         return ResultadoUpload(nome_arq, False, "—", 0.0, str(e)[:80])

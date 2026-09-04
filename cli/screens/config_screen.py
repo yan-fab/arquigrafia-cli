@@ -112,5 +112,6 @@ def tela_config(session, total_fotos: int) -> dict:
         "album_id":   album_id,
         "novo_album": novo_album,
         "licenca":    licenca,
-        "autor":      "",
+        "autor":      getattr(session, "user_name", ""),
+        "user_id":    getattr(session, "user_id", None),
     }

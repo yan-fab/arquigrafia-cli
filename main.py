@@ -147,8 +147,8 @@ def _exibir_relatorio(resultados, tempo_total: float, pasta: str):
 # ──────────────────────────────────────────────────────────────────
 def main():
     try:
-        # 1. Login
-        session, nome, email = tela_login()
+        # 1. Login via REST API OAuth 2.0
+        session, nome, email, user_id = tela_login()
 
         # 1.5 Pré-carrega IA em background enquanto usuário configura
         import threading
@@ -160,8 +160,9 @@ def main():
         _ia_thread.start()
         logging.info("Thread de pré-carregamento da IA iniciada.")
 
-        # Obtém o ID do usuário conectado para varredura futura
-        user_id = extrair_id_usuario(session)
+        # Garante o ID do usuário conectado para varredura e upload
+        if not user_id:
+            user_id = extrair_id_usuario(session)
         logging.info(f"User ID logado: {user_id}")
 
         while True:
@@ -176,6 +177,7 @@ def main():
                 console.print()
                 config = tela_config(session, len(imagens))
                 config["autor"] = nome
+                config["user_id"] = user_id
 
                 section("UPLOAD EM ANDAMENTO")
                 console.print()

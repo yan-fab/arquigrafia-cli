@@ -7,53 +7,55 @@ from cli.utils import console, banner, section, ok, erro, aviso, info
 from cli.screens.login_screen import QSTYLE
 from core.auth import listar_albums
 from core.scanner import (
+    obter_fotos_em_albuns,
     obter_fotos_do_perfil,
-    verificar_foto_sem_album,
-    obter_localizacao_foto,
-    associar_foto_ao_album,
+    extrair_localizacao_foto,
+    associar_fotos_ao_album,
 )
 import time
 import requests
 
 
 def tela_organizacao(session: requests.Session, user_id: str):
-    """Gerencia toda a interface visual de varredura e organização das fotos."""
+    """Gerencia toda a interface visual de varredura e organização das fotos via API REST."""
     banner()
     section("ORGANIZAÇÃO DE FOTOS DO PERFIL")
     console.print()
 
-    # 1. Carrega álbuns do usuário e fotos
+    # 1. Carrega álbuns do usuário e fotos organizadas
     with Progress(
         SpinnerColumn(),
         TextColumn("[marsala]{task.description}[/]"),
         console=console,
         transient=True,
     ) as progress:
-        task_info = progress.add_task("Obtendo lista de álbuns do perfil…", total=None)
+        task_info = progress.add_task("Consultando coleções e álbuns na API…", total=None)
         try:
-            albums = listar_albums(session)
-            total_albums = len(albums)
+            albums = listar_albums(session, user_id)
+            fotos_organizadas = obter_fotos_em_albuns(session, user_id)
         except Exception as e:
             erro(f"Erro ao ler álbuns: {e}")
             time.sleep(3)
             return
 
-        progress.update(task_info, description="Obtendo listagem de fotos do perfil…")
-        photo_ids = obter_fotos_do_perfil(session, user_id)
+        progress.update(task_info, description="Buscando fotos cadastradas no seu perfil…")
+        def cb_fetch(msg):
+            progress.update(task_info, description=msg)
+        todas_fotos = obter_fotos_do_perfil(session, user_id, callback_progresso=cb_fetch)
 
-    if not photo_ids:
+    if not todas_fotos:
         aviso("Nenhuma foto encontrada no seu perfil do Arquigrafia.")
         input("\nPressione ENTER para voltar ao menu principal…")
         return
 
-    info(f"Total de {len(photo_ids)} fotos encontradas no perfil.")
-    info("Iniciando varredura para identificar fotos sem álbum e localizações…")
+    info(f"Total de {len(todas_fotos)} fotos encontradas no perfil.")
+    info("Identificando fotos sem álbum e agrupando por localização…")
     console.print()
 
+    # 2. Identifica fotos sem álbum e agrupa por localização
     fotos_sem_album = []
     agrupamento = {}  # localizacao -> list de photo_ids
 
-    # 2. Varredura com barra Flow
     with Progress(
         TextColumn("[marsala]Progresso:[/]"),
         BarColumn(bar_width=30, style="grey35", complete_style="bold #9B2335"),
@@ -61,20 +63,17 @@ def tela_organizacao(session: requests.Session, user_id: str):
         TextColumn("• {task.completed}/{task.total} fotos"),
         console=console,
     ) as progress:
-        task_scan = progress.add_task("Varrendo…", total=len(photo_ids))
+        task_scan = progress.add_task("Agrupando…", total=len(todas_fotos))
 
-        for pid in photo_ids:
-            progress.update(task_scan, description=f"Analisando foto #{pid}…")
-            
-            # Verifica se está sem álbum
-            sem_album = verificar_foto_sem_album(session, pid, total_albums)
-            if sem_album:
-                fotos_sem_album.append(pid)
-                loc = obter_localizacao_foto(session, pid)
-                if loc not in agrupamento:
-                    agrupamento[loc] = []
-                agrupamento[loc].append(pid)
-                
+        for f in todas_fotos:
+            pid = f.get("id")
+            if pid and pid not in fotos_organizadas:
+                fotos_sem_album.append(f)
+                local = extrair_localizacao_foto(f)
+                if local not in agrupamento:
+                    agrupamento[local] = []
+                agrupamento[local].append(pid)
+
             progress.advance(task_scan, 1)
 
     console.print()
@@ -85,11 +84,11 @@ def tela_organizacao(session: requests.Session, user_id: str):
         input("\nPressione ENTER para voltar ao menu principal…")
         return
 
-    # 3. Exibe tabela com resumo
+    # 3. Exibe tabela com resumo das localizações
     console.print(f"  [cinza]Fotos sem álbum encontradas:[/] [marsala]{len(fotos_sem_album)}[/]\n")
 
     tabela = Table(border_style="marsala.dim", box=None, padding=(0, 2))
-    tabela.add_column("Localização", style="creme bold")
+    tabela.add_column("Localização", style="label")
     tabela.add_column("Fotos Sem Álbum", style="marsala bold", justify="right")
 
     for local, ids in agrupamento.items():
@@ -101,7 +100,7 @@ def tela_organizacao(session: requests.Session, user_id: str):
     # 4. Interação para cada grupo de localização
     for local, ids in agrupamento.items():
         console.print(f"\n  [marsala.dim]──────────────────────────────────────────────────[/]")
-        info(f"Localização: [creme bold]{local}[/] — [marsala]{len(ids)} fotos[/] sem álbum.")
+        info(f"Localização: [label]{local}[/] — [marsala]{len(ids)} fotos[/] sem álbum.")
 
         # Opções do menu: álbuns existentes + pular
         choices = [{"name": name, "value": aid} for name, aid in albums.items()]
@@ -117,30 +116,29 @@ def tela_organizacao(session: requests.Session, user_id: str):
             aviso(f"Grupo '{local}' pulado.")
             continue
 
-        # Realiza a associação com barra de progresso rápida
         nome_album = [k for k, v in albums.items() if v == escolha][0]
-        console.print(f"  [cinza]Associando fotos ao álbum:[/] [marsala]{nome_album}[/]")
+        console.print(f"  [cinza]Associando {len(ids)} fotos ao álbum:[/] [marsala]{nome_album}[/]")
 
-        sucessos = 0
         with Progress(
             SpinnerColumn(),
-            TextColumn("[marsala]Associando: {task.description}[/]"),
+            TextColumn("[marsala]Enviando lote para a API REST…[/]"),
             console=console,
             transient=True,
         ) as progress:
-            task_assoc = progress.add_task(f"0/{len(ids)}", total=len(ids))
-            for i, pid in enumerate(ids, 1):
-                progress.update(task_assoc, description=f"{i}/{len(ids)} (Foto #{pid})")
-                ok_assoc = associar_foto_ao_album(session, pid, escolha)
-                if ok_assoc:
-                    sucessos += 1
-                time.sleep(0.5)  # Evita sobrecarregar o servidor
-                progress.advance(task_assoc, 1)
+            task_assoc = progress.add_task("Associando…", total=None)
+            # Associação direta via REST em lote (blocos de até 50 fotos)
+            chunk_size = 50
+            sucesso_total = True
+            for i in range(0, len(ids), chunk_size):
+                sub_lote = ids[i:i + chunk_size]
+                ok_assoc = associar_fotos_ao_album(session, escolha, sub_lote)
+                if not ok_assoc:
+                    sucesso_total = False
 
-        if sucessos == len(ids):
+        if sucesso_total:
             ok(f"Todas as {len(ids)} fotos foram adicionadas ao álbum '{nome_album}' com sucesso!")
         else:
-            aviso(f"{sucessos} de {len(ids)} fotos adicionadas ao álbum '{nome_album}'.")
+            aviso(f"Algumas fotos do grupo '{local}' podem não ter sido associadas. Verifique na plataforma.")
 
     ok("Organização concluída!")
     input("\nPressione ENTER para retornar ao menu principal…")

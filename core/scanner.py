@@ -1,122 +1,145 @@
-# core/scanner.py — Lógica de varredura de perfil, filtragem de fotos sem álbum e associação
+# core/scanner.py — Varredura e organização de coleções/álbuns via API REST
 
-import re
 import logging
 import requests
-from bs4 import BeautifulSoup
-from core.auth import listar_albums
 
-URL_BASE = "https://www.arquigrafia.org.br"
+URL_API = "https://api.arquigrafia.org.br"
 
 
 def extrair_id_usuario(session: requests.Session) -> str | None:
-    """Extrai o ID do usuário conectado a partir da página /home."""
+    """
+    Retorna o UUID do usuário conectado consultando a API /api/me ou a sessão.
+    """
+    if getattr(session, "user_id", None):
+        return session.user_id
+
     try:
-        res = session.get(f"{URL_BASE}/home", timeout=15)
-        soup = BeautifulSoup(res.text, "html.parser")
-        for a in soup.find_all("a", href=True):
-            href = a["href"]
-            m = re.search(r"/users/(\d+)$", href)
-            if m:
-                return m.group(1)
+        res = session.get(f"{URL_API}/api/me", timeout=15)
+        if res.status_code == 200:
+            user_data = res.json().get("user", {})
+            uid = user_data.get("id")
+            session.user_id = uid
+            return uid
     except Exception as e:
-        logging.error(f"Erro ao extrair ID do usuário: {e}")
+        logging.error(f"Erro ao obter ID do usuário via API: {e}")
     return None
 
 
-def obter_fotos_do_perfil(session: requests.Session, user_id: str) -> list[str]:
-    """Retorna uma lista de IDs de todas as fotos do perfil do usuário."""
-    try:
-        logging.info(f"Buscando fotos do perfil do usuario {user_id}...")
-        res = session.get(f"{URL_BASE}/users/{user_id}", timeout=20)
-        soup = BeautifulSoup(res.text, "html.parser")
-        
-        # Filtra os links de edicao das fotos (indica propriedade)
-        photo_ids = []
-        for a in soup.find_all("a", href=True):
-            href = a["href"]
-            m = re.search(r"/photos/(\d+)/edit", href)
-            if m:
-                photo_ids.append(m.group(1))
-        
-        # Deduplica preservando a ordem (do mais recente ao mais antigo)
-        return list(dict.fromkeys(photo_ids))
-    except Exception as e:
-        logging.error(f"Erro ao obter fotos do perfil: {e}")
-        return []
-
-
-def verificar_foto_sem_album(session: requests.Session, photo_id: str, total_albums_user: int) -> bool:
+def obter_fotos_em_albuns(session: requests.Session, user_id: str) -> set[str]:
     """
-    Verifica se uma foto específica não está em nenhum álbum.
-    Retorna True se estiver sem álbum, False caso contrário.
+    Retorna um conjunto (set) com os IDs de todas as fotos que já pertencem a algum álbum do usuário.
     """
+    fotos_organizadas = set()
     try:
-        headers = {"X-Requested-With": "XMLHttpRequest"}
-        res = session.get(f"{URL_BASE}/albums/get/list/{photo_id}", headers=headers, timeout=15)
-        
-        # O site retorna apenas os álbuns nos quais a foto NÃO está adicionada.
-        # Se o número de checkboxes for igual ao total de álbuns do usuário, ela está sem álbum.
-        soup = BeautifulSoup(res.text, "html.parser")
-        checkboxes = soup.find_all("input", {"type": "checkbox", "name": "albums[]"})
-        
-        return len(checkboxes) == total_albums_user
+        url_albums = f"{URL_API}/api/users/{user_id}/albums"
+        res = session.get(url_albums, timeout=15)
+        if res.status_code == 200:
+            albums_list = res.json()
+            if isinstance(albums_list, dict) and "data" in albums_list:
+                albums_list = albums_list["data"]
+
+            for alb in albums_list:
+                alb_id = alb.get("id")
+                # Se já vier lista de imagens no objeto
+                imgs = alb.get("images")
+                if imgs and isinstance(imgs, list):
+                    for img in imgs:
+                        if isinstance(img, dict) and "id" in img:
+                            fotos_organizadas.add(img["id"])
+                        elif isinstance(img, str):
+                            fotos_organizadas.add(img)
+                elif alb_id:
+                    # Busca o detalhe do álbum para listar as imagens
+                    res_det = session.get(f"{URL_API}/api/albums/{alb_id}", timeout=15)
+                    if res_det.status_code == 200:
+                        det_imgs = res_det.json().get("images", [])
+                        for img in det_imgs:
+                            if isinstance(img, dict) and "id" in img:
+                                fotos_organizadas.add(img["id"])
     except Exception as e:
-        logging.error(f"Erro ao verificar album da foto {photo_id}: {e}")
-        return False
+        logging.error(f"Erro ao buscar fotos dos álbuns: {e}")
+
+    return fotos_organizadas
 
 
-def obter_localizacao_foto(session: requests.Session, photo_id: str) -> str:
-    """Acessa a tela de edição da foto para capturar a cidade/estado cadastrados."""
+def obter_fotos_do_perfil(session: requests.Session, user_id: str, callback_progresso=None) -> list[dict]:
+    """
+    Retorna todas as imagens cadastradas pelo usuário consultando as páginas da API.
+    """
+    fotos = []
+    page = 1
+    per_page = 100
+
     try:
-        res = session.get(f"{URL_BASE}/photos/{photo_id}/edit", timeout=15)
-        soup = BeautifulSoup(res.text, "html.parser")
-        
-        cidade = ""
-        estado = ""
-        
-        city_inp = soup.find("input", {"name": "photo_city"})
-        if city_inp:
-            cidade = city_inp.get("value", "").strip()
-            
-        state_sel = soup.find("select", {"name": "photo_state"})
-        if state_sel:
-            opt = state_sel.find("option", selected=True)
-            if opt and opt.get("value"):
-                estado = opt.get("value").strip()
-                
-        if cidade and estado:
-            return f"{cidade} - {estado}"
-        elif cidade:
-            return cidade
-        elif estado:
-            return estado
+        while True:
+            if callback_progresso:
+                callback_progresso(f"Buscando página {page} de fotos…")
+
+            url = f"{URL_API}/api/images?user_id={user_id}&per_page={per_page}&page={page}"
+            res = session.get(url, timeout=20)
+            if res.status_code != 200:
+                logging.error(f"Erro ao buscar fotos da página {page}: {res.status_code}")
+                break
+
+            data = res.json()
+            items = data.get("data", [])
+            if not items:
+                break
+
+            fotos.extend(items)
+
+            # Verifica paginação
+            meta = data.get("meta", {})
+            last_page = meta.get("last_page", 1)
+            if page >= last_page:
+                break
+
+            page += 1
+
     except Exception as e:
-        logging.error(f"Erro ao obter localizacao da foto {photo_id}: {e}")
+        logging.error(f"Exceção ao listar fotos do usuário: {e}")
+
+    return fotos
+
+
+def extrair_localizacao_foto(foto: dict) -> str:
+    """Extrai a string de localização da foto a partir de metadados da API."""
+    # 1. Tenta campo de localização direta
+    loc = foto.get("location")
+    if loc and isinstance(loc, dict) and loc.get("label"):
+        return loc["label"].strip()
+
+    # 2. Tenta location_label direto
+    loc_label = foto.get("location_label")
+    if loc_label:
+        return loc_label.strip()
+
+    # 3. Tenta títulos (que muitas vezes armazenam o nome do local gerado)
+    titles = foto.get("titles", [])
+    if titles and isinstance(titles, list):
+        label = titles[0].get("label")
+        if label:
+            return label.strip()
+
     return "Sem Localização"
 
 
-def associar_foto_ao_album(session: requests.Session, photo_id: str, album_id: str) -> bool:
-    """Associa uma foto específica ao álbum no site do Arquigrafia."""
+def associar_fotos_ao_album(session: requests.Session, album_id: str, photo_ids: list[str]) -> bool:
+    """
+    Associa uma lista de fotos a um álbum via POST /api/albums/{id}/images em uma única chamada.
+    """
     try:
-        headers = {"X-Requested-With": "XMLHttpRequest"}
-        # 1. Pega o token CSRF atualizado da página de listagem
-        res_list = session.get(f"{URL_BASE}/albums/get/list/{photo_id}", headers=headers, timeout=15)
-        soup = BeautifulSoup(res_list.text, "html.parser")
-        token_el = soup.find("input", {"name": "_token"})
-        if not token_el:
-            return False
-        
-        token = token_el["value"]
-        
-        # 2. Faz o POST de associação
+        url = f"{URL_API}/api/albums/{album_id}/images"
         payload = {
-            "_token": token,
-            "_photo": photo_id,
-            "albums[]": [album_id]
+            "images": [{"image_id": pid} for pid in photo_ids]
         }
-        res_add = session.post(f"{URL_BASE}/albums/photo/add", data=payload, timeout=15)
-        return res_add.status_code == 200
+        res = session.post(url, json=payload, timeout=20)
+        return res.status_code in (200, 201)
     except Exception as e:
-        logging.error(f"Erro ao associar foto {photo_id} ao album {album_id}: {e}")
+        logging.error(f"Erro ao associar lote de {len(photo_ids)} fotos ao álbum {album_id}: {e}")
         return False
+
+
+def associar_foto_ao_album(session: requests.Session, photo_id: str, album_id: str) -> bool:
+    """Compatibilidade para associar uma única foto."""
+    return associar_fotos_ao_album(session, album_id, [photo_id])

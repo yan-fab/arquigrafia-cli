@@ -19,6 +19,22 @@ logging.basicConfig(
     force=True,
 )
 
+# Garante compatibilidade do prompt_toolkit com qualquer terminal Windows (conhost, Windows Terminal, VS Code, Git Bash)
+try:
+    import prompt_toolkit.output.defaults
+    from prompt_toolkit.output.vt100 import Vt100_Output
+    _orig_create_output = prompt_toolkit.output.defaults.create_output
+
+    def _safe_create_output(stdout=None, always_prefer_tty=False):
+        try:
+            return _orig_create_output(stdout, always_prefer_tty)
+        except Exception:
+            return Vt100_Output.from_pty(stdout or sys.stdout)
+
+    prompt_toolkit.output.defaults.create_output = _safe_create_output
+except Exception:
+    pass
+
 # Garante que o diretório do projeto está no path (necessário para o .exe)
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 

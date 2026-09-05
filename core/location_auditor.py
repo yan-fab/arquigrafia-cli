@@ -171,8 +171,12 @@ def atualizar_localizacao_imagem(
     if not title:
         title = location_label[:60] if location_label else "Fotografia"
 
+    # Validação do Arquigrafia: description max 500 caracteres
+    if description and len(description) > 500:
+        description = description[:497] + "..."
+
     payload = {
-        "title": title,
+        "title": title[:250] if title else "Fotografia",
         "description": description or None,
         "latitude": round(float(lat), 8),
         "longitude": round(float(lon), 8),

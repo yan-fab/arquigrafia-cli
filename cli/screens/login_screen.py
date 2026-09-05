@@ -25,24 +25,43 @@ QSTYLE = questionary.Style([
 
 def tela_login() -> tuple:
     """
-    Mostra a tela de login.
-    Retorna (session, nome_usuario, email).
+    Mostra a tela de login inicial.
+    Retorna (session, nome_usuario, email, user_id).
     """
     banner()
+
+    console.print(Panel(
+        "[creme]Bem-vindo ao cliente oficial do [bold marsala]Arquigrafia[/].\n"
+        "Envie fotos com identificação por IA, audite localizações e organize coleções automaticamente.[/]",
+        title="[bold #E8D5C4]◆ ACESSO À PLATAFORMA ◆[/]",
+        border_style="#9B2335",
+        box=box.ROUNDED,
+        padding=(0, 1),
+    ))
+    console.print()
     section("AUTENTICAÇÃO")
 
     # Verifica credenciais salvas
     email_salvo, senha_salva = get_saved_credentials()
 
     if email_salvo and senha_salva:
-        console.print(f"\n  [cinza]Conta salva detectada:[/] [marsala]{email_salvo}[/]")
+        console.print()
+        console.print(Panel(
+            f"  [label]Conta Salva:[/] [bold marsala]{email_salvo}[/]\n"
+            f"  [cinza]Sessão pronta para autenticação rápida via API REST.[/]",
+            title="[bold marsala.dim]CONTA DETECTADA[/]",
+            border_style="marsala.dim",
+            box=box.ROUNDED,
+            padding=(0, 1),
+        ))
+        console.print()
         usar = questionary.confirm(
-            "Usar conta salva?", default=True, style=QSTYLE
+            "Deseja entrar com esta conta salva?", default=True, style=QSTYLE
         ).ask()
         if usar:
             session, nome, user_id = fazer_login(email_salvo, senha_salva)
             if session:
-                ok(f"Conectado como: [marsala]{nome}[/]")
+                ok(f"Autenticação bem-sucedida! Bem-vindo, [marsala]{nome}[/]")
                 return session, nome, email_salvo, user_id
             else:
                 erro(f"Falha ao conectar: {nome or 'Credenciais inválidas'}")

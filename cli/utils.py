@@ -9,13 +9,23 @@ from rich.text import Text
 from rich import box
 
 # Tema marsala: #7B2D3E ≈ color(88) no terminal 256-cores
-MARSALA = "color(88)"
-MARSALA_BRIGHT = "color(124)"
-CREME = "color(224)"
-CINZA = "color(245)"
-VERDE = "color(34)"
-VERMELHO = "color(160)"
-AMARELO = "color(178)"
+MARSALA = "#9B2335"
+MARSALA_BRIGHT = "#C72C41"
+CREME = "#E8D5C4"
+CINZA = "#8B8B8B"
+VERDE = "#2ECC71"
+VERMELHO = "#E74C3C"
+AMARELO = "#F39C12"
+
+# Gradiente vertical inspirado no estilo da imagem de referência
+GRADIENT_MARSALA = [
+    "#E03E52",  # Linha 1: Marsala Coral Luminoso
+    "#C72C41",  # Linha 2: Marsala Vibrante
+    "#9B2335",  # Linha 3: Marsala Oficial Arquigrafia
+    "#B55361",  # Linha 4: Marsala Suave / Rosé Escuro
+    "#D9969F",  # Linha 5: Rosé Pastel
+    "#E8D5C4",  # Linha 6: Creme / Base do contorno
+]
 
 THEME = Theme({
     "marsala":       MARSALA_BRIGHT,
@@ -35,26 +45,44 @@ THEME = Theme({
 
 # Força UTF-8 no terminal Windows para suporte a Unicode
 if sys.platform == "win32":
-    sys.stdout = io.TextIOWrapper(sys.stdout.buffer, encoding="utf-8", errors="replace")
-    sys.stderr = io.TextIOWrapper(sys.stderr.buffer, encoding="utf-8", errors="replace")
+    try:
+        if hasattr(sys.stdout, "reconfigure"):
+            sys.stdout.reconfigure(encoding="utf-8", errors="replace")
+        if hasattr(sys.stderr, "reconfigure"):
+            sys.stderr.reconfigure(encoding="utf-8", errors="replace")
+    except Exception:
+        pass
 
 console = Console(theme=THEME, force_terminal=True, highlight=False)
 
 
-def banner():
-    """Exibe o banner pixel art em marsala."""
-    console.clear()
-    art = pyfiglet.figlet_format("ARQ\nUPLOADER", font="doom")
-    lines = art.split("\n")
+def banner(limpar: bool = True):
+    """Exibe o banner estilizado em ansi_shadow com gradiente vertical em marsala/creme."""
+    if limpar:
+        console.clear()
+
+    largura = console.width or 100
+    if largura >= 88:
+        texto = "ARQUIGRAFIA"
+        art = pyfiglet.figlet_format(texto, font="ansi_shadow", width=160)
+    else:
+        texto = "ARQUI\nGRAFIA"
+        art = pyfiglet.figlet_format(texto, font="ansi_shadow", width=80)
+
+    lines = [l for l in art.splitlines() if l.strip()]
+
     styled = Text()
-    for line in lines:
-        styled.append(line + "\n", style="marsala")
+    for i, line in enumerate(lines):
+        color = GRADIENT_MARSALA[i % len(GRADIENT_MARSALA)]
+        styled.append(line + "\n", style=f"bold {color}")
+
     console.print(Panel(
         styled,
-        title="[marsala.dim][ ARQUIGRAFIA v2.0 ][/]",
-        border_style="marsala.dim",
-        box=box.DOUBLE,
-        padding=(0, 2),
+        title="[bold #E8D5C4]◆ [bold #9B2335]ARQUIGRAFIA[/] [bold #E8D5C4]• UPLOADER & ORGANIZER v2.1 ◆[/]",
+        subtitle="[#8B8B8B]FAU-USP • Rede Colaborativa de Imagens de Arquitetura[/#8B8B8B]",
+        border_style="#9B2335",
+        box=box.ROUNDED,
+        padding=(0, 1),
     ))
 
 

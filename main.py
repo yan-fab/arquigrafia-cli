@@ -62,6 +62,7 @@ from cli.screens.folder_screen import tela_pasta
 from cli.screens.config_screen import tela_config
 from cli.screens.menu_screen   import tela_menu
 from cli.screens.organizer_screen import tela_organizacao
+from cli.screens.location_audit_screen import tela_auditoria_localizacao
 from core.uploader             import enviar_foto
 from core.ia                   import carregar_ia, is_ia_pronta
 from core.scanner              import extrair_id_usuario
@@ -268,6 +269,15 @@ def main():
                 
                 # 4. Fluxo de Organização
                 tela_organizacao(session, user_id)
+
+            elif opcao == "auditar_loc":
+                if not user_id:
+                    erro("Não foi possível identificar seu ID de usuário. O recurso de auditoria requer verificação de ID.")
+                    time.sleep(3)
+                    continue
+
+                # 5. Fluxo de Auditoria e Atualização de Localização
+                tela_auditoria_localizacao(session, user_id)
 
             elif opcao == "sair":
                 console.print("\n  [marsala]Desconectando… Obrigado por usar o Arquigrafia Uploader![/]\n")

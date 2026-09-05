@@ -19,7 +19,8 @@ def tela_menu(nome_usuario: str) -> str:
         choices=[
             {"name": "1. Fazer upload de novas fotos", "value": "upload"},
             {"name": "2. Organizar fotos sem álbum do perfil", "value": "organizar"},
-            {"name": "3. Sair", "value": "sair"},
+            {"name": "3. Auditar e atualizar localização de fotos", "value": "auditar_loc"},
+            {"name": "4. Sair", "value": "sair"},
         ],
         style=QSTYLE,
     ).ask()

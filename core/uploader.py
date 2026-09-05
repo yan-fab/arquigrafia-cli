@@ -201,6 +201,19 @@ def enviar_foto(
             res_json = res.json()
             nova_imagem_id = res_json.get("id") or (res_json.get("data", {}).get("id"))
 
+            # ── Confirmação da Nova Estrutura de Localização via PUT ──────────
+            if nova_imagem_id and exif.get("latitude") and exif.get("longitude"):
+                try:
+                    put_url = f"{URL_API}/api/images/{nova_imagem_id}"
+                    put_payload = {
+                        "latitude": round(float(exif["latitude"]), 8),
+                        "longitude": round(float(exif["longitude"]), 8),
+                        "location_label": local_label or local_str,
+                    }
+                    session.put(put_url, json=put_payload, timeout=15)
+                except Exception as eloc:
+                    logging.warning(f"Aviso ao persistir localização via PUT: {eloc}")
+
             # ── Associação ao Álbum se solicitado ─────────────────────────────
             target_album_id = album_id
             if novo_album and not target_album_id:

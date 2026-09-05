@@ -91,3 +91,39 @@ def geocodificar(lat: float, lon: float) -> dict:
     _cache[chave] = resultado
     _save_cache()
     return resultado
+
+
+def geocodificar_endereco(endereco: str) -> tuple[float, float, str] | None:
+    """
+    Realiza forward geocoding a partir de um texto de endereço/local.
+    Retorna (latitude, longitude, display_name) ou None se não encontrado.
+    Utiliza cache local para evitar requisições repetidas.
+    """
+    if not endereco or not endereco.strip():
+        return None
+
+    texto_busca = endereco.strip()
+    chave = f"addr:{texto_busca.lower()}"
+    if chave in _cache:
+        cached = _cache[chave]
+        if cached:
+            return cached.get("lat"), cached.get("lon"), cached.get("display_name")
+        return None
+
+    try:
+        time.sleep(1.1)  # Respeita rate limit do Nominatim
+        loc = _geolocator.geocode(texto_busca, language="pt-BR")
+        if loc and loc.latitude and loc.longitude:
+            lat = float(loc.latitude)
+            lon = float(loc.longitude)
+            disp = loc.address
+            _cache[chave] = {"lat": lat, "lon": lon, "display_name": disp}
+            _save_cache()
+            return lat, lon, disp
+    except Exception:
+        pass
+
+    _cache[chave] = None
+    _save_cache()
+    return None
+

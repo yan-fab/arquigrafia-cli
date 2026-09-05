@@ -137,7 +137,7 @@ def criar_album(session: requests.Session, titulo: str, descricao: str = "", is_
     Cria uma nova coleção/álbum via API e retorna seu UUID.
     """
     try:
-        url = f"{URL_API}/api/albums/"
+        url = f"{URL_API}/api/albums"
         payload = {
             "title": titulo,
             "description": descricao,
@@ -147,7 +147,7 @@ def criar_album(session: requests.Session, titulo: str, descricao: str = "", is_
         if res.status_code in (200, 201):
             data = res.json()
             # Retorna o id criado
-            album_id = data.get("id") or (data.get("data", {}).get("id"))
+            album_id = data.get("id") or data.get("album", {}).get("id") or (data.get("data", {}).get("id"))
             logging.info(f"Álbum '{titulo}' criado com sucesso: {album_id}")
             return album_id
         else:

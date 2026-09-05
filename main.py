@@ -1,4 +1,4 @@
-# main.py — Orquestrador principal do Arquigrafia Uploader CLI
+# main.py — Orquestrador principal do Arquigrafia Uploader & Organizer
 
 import sys
 import os

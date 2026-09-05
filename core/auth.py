@@ -139,8 +139,8 @@ def criar_album(session: requests.Session, titulo: str, descricao: str = "", is_
     try:
         url = f"{URL_API}/api/albums"
         payload = {
-            "title": titulo,
-            "description": descricao,
+            "title": str(titulo).strip()[:150],
+            "description": str(descricao or "").strip()[:450],
             "is_private": is_private,
         }
         res = session.post(url, json=payload, timeout=15)

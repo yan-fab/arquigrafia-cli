@@ -64,9 +64,11 @@ def obter_fotos_em_albuns(session: requests.Session, user_id: str) -> set[str]:
 
 def obter_fotos_do_perfil(session: requests.Session, user_id: str, callback_progresso=None) -> list[dict]:
     """
-    Retorna todas as imagens cadastradas pelo usuário consultando as páginas da API.
+    Retorna todas as imagens cadastradas pelo usuário consultando as páginas da API,
+    garantindo unicidade por ID.
     """
     fotos = []
+    vistos = set()
     page = 1
     per_page = 100
 
@@ -86,7 +88,11 @@ def obter_fotos_do_perfil(session: requests.Session, user_id: str, callback_prog
             if not items:
                 break
 
-            fotos.extend(items)
+            for item in items:
+                fid = item.get("id")
+                if fid and fid not in vistos:
+                    vistos.add(fid)
+                    fotos.append(item)
 
             # Verifica paginação
             meta = data.get("meta", {})
@@ -102,6 +108,29 @@ def obter_fotos_do_perfil(session: requests.Session, user_id: str, callback_prog
     return fotos
 
 
+def extrair_titulo_foto(foto: dict) -> str:
+    """
+    Extrai o título principal / nome da obra da imagem.
+    Prioriza títulos cadastrados; recorre à localização se não houver título.
+    """
+    titles = foto.get("titles", [])
+    if titles and isinstance(titles, list):
+        label = titles[0].get("label")
+        if label and str(label).strip():
+            return str(label).strip()
+
+    t = foto.get("title")
+    if t and str(t).strip():
+        return str(t).strip()
+
+    # Recorre à localização se não tiver título
+    loc = extrair_localizacao_foto(foto)
+    if loc and loc != "Sem Localização":
+        return loc
+
+    return "Sem Título"
+
+
 def extrair_localizacao_foto(foto: dict) -> str:
     """Extrai a string de localização da foto a partir de metadados da API."""
     # 1. Tenta campo de localização direta
@@ -114,7 +143,14 @@ def extrair_localizacao_foto(foto: dict) -> str:
     if loc_label:
         return loc_label.strip()
 
-    # 3. Tenta títulos (que muitas vezes armazenam o nome do local gerado)
+    # 3. Tenta lista de locations
+    locs = foto.get("locations", [])
+    if locs and isinstance(locs, list):
+        lbl = locs[0].get("label")
+        if lbl and str(lbl).strip():
+            return str(lbl).strip()
+
+    # 4. Tenta títulos (que muitas vezes armazenam o nome do local gerado)
     titles = foto.get("titles", [])
     if titles and isinstance(titles, list):
         label = titles[0].get("label")
@@ -126,15 +162,28 @@ def extrair_localizacao_foto(foto: dict) -> str:
 
 def associar_fotos_ao_album(session: requests.Session, album_id: str, photo_ids: list[str]) -> bool:
     """
-    Associa uma lista de fotos a um álbum via POST /api/albums/{id}/images em uma única chamada.
+    Associa uma lista de fotos a um álbum via POST /api/albums/{id}/images.
+    Divide automaticamente em lotes de 50 para evitar limites de payload da API.
     """
+    if not photo_ids:
+        return True
+
     try:
         url = f"{URL_API}/api/albums/{album_id}/images"
-        payload = {
-            "images": [{"image_id": pid} for pid in photo_ids]
-        }
-        res = session.post(url, json=payload, timeout=20)
-        return res.status_code in (200, 201)
+        chunk_size = 50
+        todos_ok = True
+
+        for i in range(0, len(photo_ids), chunk_size):
+            chunk = photo_ids[i:i + chunk_size]
+            payload = {
+                "images": [{"image_id": pid} for pid in chunk]
+            }
+            res = session.post(url, json=payload, timeout=25)
+            if res.status_code not in (200, 201):
+                logging.error(f"Erro ao associar sub-lote ao álbum {album_id} ({res.status_code}): {res.text}")
+                todos_ok = False
+
+        return todos_ok
     except Exception as e:
         logging.error(f"Erro ao associar lote de {len(photo_ids)} fotos ao álbum {album_id}: {e}")
         return False
